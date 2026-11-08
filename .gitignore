@@ -1,0 +1,13 @@
+.venv/
+__pycache__/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+datasets/
+
+archive.zip
+plant_care_ai.zip
+
+*.py[cod]
+*$py.class

@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Plant care guide · PlantCare AI</title>
+<style>
+body{font-family:system-ui,sans-serif;max-width:760px;margin:auto;padding:16px;line-height:1.5;color:#202820}
+a{color:#286b42}header{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.back{display:inline-block;padding:8px 12px;border:1px solid #286b42;border-radius:6px;text-decoration:none}
+section{padding:4px 14px;margin:10px 0;background:#f5f8f2;border-radius:6px}
+h1{margin-bottom:4px}h2{margin-top:24px}h3{margin-bottom:4px}
+label{display:inline-block;margin:6px 12px 6px 0}input[type=number]{width:120px;padding:6px}
+select{padding:8px;max-width:100%}.notice{padding:12px;background:#eef4ff;border-radius:6px}
+.notice button{margin-left:8px;padding:7px 10px;cursor:pointer}
+small{color:#555}
+</style>
+</head>
+<body>
+<header>
+ <a class="back" href="index.html">← Back to PlantCare AI</a>
+ <h1>🌿 Plant care guide</h1>
+</header>
+<p>Choose a crop for tailored guidance. Photos cannot measure growing conditions; enter only readings you have measured.</p>
+<div id="context" class="notice" hidden></div>
+<label for="species">Plant or crop:</label>
+<select id="species"><option value="">General / unknown</option></select>
+<h2>Optional measured values</h2>
+<div>
+ <label>Soil moisture (%) <input id="moisture" type="number" min="0" max="100" step="1" placeholder="Not measured"></label>
+ <label>Air temperature (°C) <input id="temperature" type="number" min="-40" max="60" step="1" placeholder="Not measured"></label>
+ <label>Relative humidity (%) <input id="humidity" type="number" min="0" max="100" step="1" placeholder="Not measured"></label>
+ <label>Direct sunlight (hours/day) <input id="light" type="number" min="0" max="24" step="0.5" placeholder="Not measured"></label>
+</div>
+<h2>Observed symptoms (optional)</h2>
+<div id="symptoms"></div>
+<div id="report" aria-live="polite"></div>
+<small>General cultivation guidance only. Entered readings are compared with reference ranges where available; they are not measurements from your photo.</small>
+<script>
+const $=id=>document.getElementById(id);
+let knowledge;
+function el(tag,text){
+ const node=document.createElement(tag);
+ if(text!==undefined)node.textContent=text;
+ return node}
+function slug(value){return value.toLowerCase().replace(/[^a-z0-9]+/g,'_').replace(/^_|_$/g,'')}
+function cropKey(species){
+ const normalized=slug(species);
+ return Object.keys(knowledge).find(key=>!key.startsWith('_')&&
+  (normalized===key||normalized.startsWith(key+'_')))||''}
+function render(){
+ const key=$('species').value,entry=(key&&knowledge[key])||knowledge._generic,name=entry.display||'this plant',report=$('report');
+ report.replaceChildren(el('p',key?'Care guidance for '+name+'.':'General care guidance; choose a crop for tailored ranges.'));
+ const sections=[['Water',entry.water],['Sunlight',entry.sunlight],['Soil',entry.soil],
+  ['Temperature and humidity',entry.temp_humidity],['Nutrients',entry.nutrients],['Pests',entry.pests]];
+ for(const [title,text] of sections){
+  const section=el('section');section.append(el('h3',title),el('p',text));report.append(section)}
+ const value=id=>$(id).value===''?null:Number($(id).value),readings=[];
+ const moisture=value('moisture'),temperature=value('temperature'),humidity=value('humidity'),light=value('light');
+ if(moisture!==null)readings.push('Your soil-moisture reading: '+moisture+'%. Meters vary; compare with the meter instructions and a finger test. No crop-specific moisture threshold is provided.');
+ if(light!==null&&entry.light_hours_min)readings.push('Your reported direct light: '+light+' h/day. '+name+' typically needs at least '+entry.light_hours_min+' h/day.');
+ const range=(label,v,limits,unit)=>{
+  if(v===null||!limits)return null;
+  const pos=v<limits[0]?'below':v>limits[1]?'above':'within';
+  return label+': your entered value '+v+unit+' is '+pos+' the typical '+name+' range ('+limits[0]+'–'+limits[1]+unit+').'};
+ const tempText=range('Temperature',temperature,entry.temp_c,' °C');
+ const humidityText=range('Humidity',humidity,entry.humidity_pct,'%');
+ if(tempText)readings.push(tempText);if(humidityText)readings.push(humidityText);
+ if(readings.length){
+  report.append(el('h2','Your measurements'));
+  for(const text of readings)report.append(el('p',text))}
+ const selected=[...document.querySelectorAll('[data-symptom]:checked')].map(input=>input.value);
+ if(selected.length){
+  report.append(el('h2','Observed symptoms and possible causes'));
+  for(const symptom of selected){
+   const section=el('section');section.append(el('strong',symptom.replace(/_/g,' ')));
+   const list=el('ul');
+   for(const cause of knowledge._symptom_causes[symptom]||[])list.append(el('li',cause));
+   section.append(list);report.append(section)}}
+ for(const [title,key] of [['Preventive care','_preventive'],['When to seek expert help','_escalate']]){
+  report.append(el('h2',title));const list=el('ul');
+  for(const item of knowledge[key])list.append(el('li',item));
+  report.append(list)}
+}
+async function init(){
+ const response=await fetch('data/care_knowledge.json');
+ if(!response.ok)throw new Error('Care guidance could not be loaded (HTTP '+response.status+').');
+ knowledge=await response.json();
+ for(const [key,entry] of Object.entries(knowledge)){
+  if(key.startsWith('_'))continue;
+  const option=el('option',entry.display);option.value=key;$('species').append(option)}
+ const symptomLabels={yellowing:'Yellowing',brown_spots:'Brown spots',dark_lesions:'Dark lesions',
+  browning_edges:'Browning edges',wilting:'Wilting',powdery_coating:'White powdery coating',
+  insect_holes:'Insect holes',curling:'Curling or distortion'};
+ for(const [key,label] of Object.entries(symptomLabels)){
+  const wrapper=el('label'),input=el('input');input.type='checkbox';input.value=key;input.dataset.symptom='';
+  wrapper.append(input,document.createTextNode(' '+label));$('symptoms').append(wrapper)}
+ const params=new URLSearchParams(location.search),suggested=cropKey(params.get('species')||'');
+ const condition=params.get('condition');
+ if(suggested){
+  const context=$('context'),cropName=knowledge[suggested].display;
+  context.hidden=false;context.append(document.createTextNode('The classifier suggested '+cropName+
+   (condition?' · possible condition: '+condition:'')+'. The guide starts at General / unknown.'));
+  const useButton=el('button','Use '+cropName+' guidance');
+  useButton.type='button';useButton.addEventListener('click',()=>{$('species').value=suggested;render()});
+  context.append(useButton)}
+ document.body.addEventListener('input',render);document.body.addEventListener('change',render);
+ render()}
+$('species').addEventListener('change',render);
+init().catch(error=>{$('report').replaceChildren(el('p','Could not load the care guide: '+error.message))});
+</script>
+</body>
+</html>

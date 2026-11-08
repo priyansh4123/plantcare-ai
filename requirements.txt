@@ -1,0 +1,14 @@
+# Core ML
+torch>=2.2
+torchvision>=0.17
+transformers>=4.40      # CLIP model used for plant/leaf validation + symptom cues
+onnx>=1.15               # ONNX export for the browser app
+onnx2torch>=1.5           # Fine-tune the deployed ONNX model on field data
+msvc-runtime>=14.0; platform_system == "Windows"
+# Image / numerics
+Pillow>=10.0
+numpy>=1.24
+# User interface
+streamlit>=1.35
+# Tests
+pytest>=8.0
